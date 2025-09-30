@@ -19,7 +19,7 @@ const handleSubmit = () => {
            <h3>Create Form</h3>
           </div>
           <div className="postsurvey_div">
-          <Form className="survey_form" method="post" >
+          <Form className="survey_form" method="post" action="/create-form">
             <div className="postsurvey-field">
               <label className="postsurvey-label" htmlFor="title">
                 <h4>Form Title</h4>

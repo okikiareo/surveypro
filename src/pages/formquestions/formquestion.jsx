@@ -11,282 +11,166 @@ import PricingModal from "../../components/pricingmodal/pricingmodal";
 import { toast } from "react-toastify";
 import config from "../../config/config";
 import axios from "axios";
-import verifyPayment from "../../utils/helpers/verifyPayment";
 import ShareLink from "../../components/sharelink/sharelink"
 
 const FormQuestions = () => {
   const navigate = useNavigate();
   const data = useActionData();
-  const { currentSurveyId, hasPaid, setHasPaid } = useAuthStore();
-  const [isPosting, setIsPosting] = useState(false);
+  const { currentFormId } = useAuthStore();
   const [isSaving, setIsSaving] = useState(false);
-  const [showPricingModal, setShowPricingModal] = useState(false);
   const authToken = useAuthStore((state) => state.authToken);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
 
   // Add new state for delete loading
   const [isDeletingId, setIsDeletingId] = useState(null);
-  const [questions, setQuestions] = useState([
+  const [formMeta, setFormMeta] = useState({ title: "", description: "" });
+  const [fields, setFields] = useState([
     {
       id: Date.now(),
-      questionId: "",
-      questionText: "",
-      questionType: "multiple_choice",
+      label: "",
+      type: "text",
       required: true,
-      options: [{ text: "", allowsCustomInput: false }],
+      options: [],
     },
   ]);
 
   const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
 
-  // Load existing questions
+  // Load existing form
   useEffect(() => {
-    const fetchQuestions = async () => {
+    const fetchForm = async () => {
       try {
-        const response = await fetch(
-          `${config.API_URL}/`,
-          {
-            headers: {
-              Authorization: `Bearer ${authToken}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
+        const response = await fetch(`${config.API_URL}/forms/${currentFormId}`,
+          { headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" } });
         const data = await response.json();
 
-        if (response.ok && data.questions.length > 0) {
-          const formattedQuestions = data.questions.map((q) => ({
-            id: Date.now() + Math.random(),
-            questionId: q._id,
-            questionText: q.questionText,
-            questionType: q.questionType,
-            required: q.required,
-            options: q.options.map((opt) => ({
-              text: typeof opt === "string" ? opt : opt.text,
-              allowsCustomInput:
-                typeof opt === "object"
-                  ? opt.allowsCustomInput || false
-                  : false,
-            })),
-          }));
-          setQuestions(formattedQuestions);
+        if (response.ok) {
+          setFormMeta({ title: data.title || "", description: data.description || "" });
+          if (Array.isArray(data.fields) && data.fields.length > 0) {
+            const formatted = data.fields.map((f) => ({
+              id: Date.now() + Math.random(),
+              label: f.label || "",
+              type: f.type || "text",
+              required: Boolean(f.required),
+              options: Array.isArray(f.options)
+                ? f.options.map((opt) => (typeof opt === "string" ? opt : String(opt)))
+                : [],
+            }));
+            setFields(formatted);
+          }
+        } else {
+          toast.error(data.msg || "Failed to load form");
         }
       } catch (error) {
-        console.error("Error loading questions:", error);
-        toast.error("Error loading existing questions");
+        console.error("Error loading form:", error);
+        toast.error("Error loading form");
       } finally {
         setIsLoading(false);
       }
     };
 
-    if (currentSurveyId) {
-      fetchQuestions();
+    if (currentFormId) {
+      fetchForm();
     } else {
       setIsLoading(false);
     }
-  }, [currentSurveyId, authToken]);
+  }, [currentFormId, authToken]);
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Prepare bulk payload
-      const validTypes = [
-        "multiple_choice",
-        "five_point",
-        "fill_in",
-        "multiple_selection",
-      ];
-
-      const bulkPayload = {
-        questions: questions.map((question) => ({
-          questionId: question.questionId || "", // Keep existing ID or empty for new
-          questionText: question.questionText.trim(), // Trim whitespace
-          questionType: question.questionType,
-          required: Boolean(question.required),
-          // Conditional options handling
+      const payload = {
+        title: formMeta.title,
+        description: formMeta.description,
+        fields: fields.map((f) => ({
+          label: f.label.trim(),
+          type: f.type,
+          required: Boolean(f.required),
           options:
-            question.questionType === "multiple_choice" ||
-            question.questionType === "multiple_selection"
-              ? question.options
-                  .map((opt) => ({
-                    text:
-                      typeof opt === "string" ? opt.trim() : opt.text.trim(),
-                    allowsCustomInput:
-                      typeof opt === "object"
-                        ? opt.allowsCustomInput || false
-                        : false,
-                  }))
-                  .filter((opt) => opt.text !== "") // Remove empty options
-              : undefined, // Exclude options for non-multiple_choice questions
+            f.type === "radio" || f.type === "checkbox"
+              ? f.options.map((opt) => String(opt).trim()).filter((o) => o !== "")
+              : undefined,
         })),
+        shares: { type: "public" },
       };
 
-      const response = await fetch(
-        `${config.API_URL}/form`,
+      const response = await fetch(`${config.API_URL}/forms/${currentFormId}`,
         {
-          method: "POST",
+          method: "PUT",
           headers: {
             Authorization: `Bearer ${authToken}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(bulkPayload),
-        }
-      );
+          body: JSON.stringify(payload),
+        });
 
       const data = await response.json();
 
       if (!response.ok) {
-        console.error("Error response:", data);
-        throw new Error("Failed to save question" || data.msg);
+        throw new Error(data.message || data.msg || "Failed to save form");
       }
-      // Update question IDs from response
-      setQuestions((prevQuestions) =>
-        prevQuestions.map((q) => {
-          const serverQuestion = data.results.details.find(
-            (sq) => sq.question === q.questionText
-          );
-          return serverQuestion?.questionId
-            ? { ...q, questionId: serverQuestion.questionId }
-            : q;
-        })
-      );
 
-      toast.success("Questions saved successfully!" || data.msg);
+      toast.success(data.msg || "Form saved successfully");
     } catch (error) {
-      toast.error("Faill to save questions");
+      toast.error(error.message || "Failed to save form");
     } finally {
       setIsSaving(false);
     }
   };
-
-  const handlePostSubmit = async (e) => {
-    e.preventDefault();
-    setIsPosting(true);
-    setIsCheckingPayment(true);
-
-    try {
-      await handleSave(); // Reuse bulk save logic
-
-      // Check payment status before showing pricing modal
-      const isPaid = await verifyPayment(currentSurveyId, authToken);
-      setHasPaid(isPaid);
-
-      if (isPaid) {
-        // If payment verified, navigate directly to publish page
-        toast.success("Payment already verified!");
-        navigate("/publish");
-      } else {
-        // If not paid, show pricing modal
-        setShowPricingModal(true);
-      }
-    } catch (error) {
-      toast.error("Error saving questions");
-    } finally {
-      setIsPosting(false);
-      setIsCheckingPayment(false);
-    }
-  };
-
-  const addNewQuestion = (id) => {
-    const newQuestion = {
+  const addNewField = () => {
+    const newField = {
       id: Date.now(),
-      questionId: currentSurveyId,
-      questionText: "",
-      questionType: "multiple_choice",
+      label: "",
+      type: "text",
       required: false,
-      options: [{ text: "", allowsCustomInput: false }],
+      options: [],
     };
-    setQuestions([...questions, newQuestion]);
+    setFields([...fields, newField]);
   };
 
-  const deleteQuestion = async (id) => {
-    setIsDeletingId(id); // Show loading state for specific question
-    try {
-      const questionToDelete = questions.find((q) => q.id === id);
+  const deleteField = (id) => {
+    setIsDeletingId(id);
+    setFields(fields.filter((f) => f.id !== id));
+    setIsDeletingId(null);
+  };
 
-      if (questionToDelete.questionId) {
-        const response = await fetch(
-          // here
-          `${config.API_URL}/surveys/${currentSurveyId}/questions/${questionToDelete.questionId}`,
-          {
-            method: "DELETE",
-            headers: {
-              Authorization: `Bearer ${authToken}`,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.message || "Failed to delete question");
-        }
-      }
-
-      setQuestions(questions.filter((question) => question.id !== id));
-      toast.success("Question deleted successfully");
-    } catch (error) {
-      toast.error(error.message || "Error deleting question");
-    } finally {
-      setIsDeletingId(null); // Clear loading state
+  const duplicateField = (id) => {
+    const fieldToDuplicate = fields.find((f) => f.id === id);
+    if (fieldToDuplicate) {
+      const duplicated = { ...fieldToDuplicate, id: Date.now() };
+      setFields([...fields, duplicated]);
     }
   };
 
-  const duplicateQuestion = (id) => {
-    const questionToDuplicate = questions.find((q) => q.id === id);
-    if (questionToDuplicate) {
-      const duplicatedQuestion = {
-        ...questionToDuplicate,
-        id: Date.now(),
-        // id: questions.length + 1,
-      };
-      setQuestions([...questions, duplicatedQuestion]);
-    }
-  };
-
-  const handleQuestionChange = (id, field, value) => {
-    const updatedQuestions = questions.map((q) =>
-      q.id === id
+  const handleFieldChange = (id, key, value) => {
+    const updated = fields.map((f) =>
+      f.id === id
         ? {
-            ...q,
-            [field]: value,
-            ...(field === "questionType" &&
-            (value === "fill_in" || value === "five_point")
+            ...f,
+            [key]: value,
+            ...(key === "type" && !(value === "radio" || value === "checkbox")
               ? { options: [] }
               : {}),
           }
-        : q
+        : f
     );
-    setQuestions(updatedQuestions);
+    setFields(updated);
   };
 
   const addOption = (id) => {
-    const updatedQuestions = questions.map((q) =>
-      q.id === id
-        ? {
-            ...q,
-            options: [...q.options, { text: "", allowsCustomInput: false }],
-          }
-        : q
+    const updated = fields.map((f) =>
+      f.id === id ? { ...f, options: [...f.options, ""] } : f
     );
-    setQuestions(updatedQuestions);
+    setFields(updated);
   };
 
-  const handleOptionChange = (questionId, index, field, value) => {
-    const updatedQuestions = questions.map((q) =>
-      q.id === questionId
-        ? {
-            ...q,
-            options: q.options.map((option, i) =>
-              i === index ? { ...option, [field]: value } : option
-            ),
-          }
-        : q
+  const handleOptionChange = (id, index, value) => {
+    const updated = fields.map((f) =>
+      f.id === id
+        ? { ...f, options: f.options.map((opt, i) => (i === index ? value : opt)) }
+        : f
     );
-    setQuestions(updatedQuestions);
+    setFields(updated);
   };
 
   // Question Upload Function
@@ -371,11 +255,11 @@ const FormQuestions = () => {
     <section className="form-page">
       <div className="wrap">
         <div className="form-head flex">
-          <Link to="/postsurvey">
+          <Link to="/create-form">
             <img src={backaro} className="backaro" alt="Back" />
           </Link>
           <div className="form-h">
-            <h3>Add Form Questions</h3>
+            <h3>Add Form Fields</h3>
           </div>
         </div>
 
@@ -383,11 +267,7 @@ const FormQuestions = () => {
           <div className="loading">Loading questions...</div>
         ) : (
           <div className="form-container">
-            <Form
-              method="post"
-              action="/surveyquestion"
-              onSubmit={handlePostSubmit}
-            >
+            <Form onSubmit={(e)=>{e.preventDefault(); handleSave();}}>
               {/* Upload File Questions */}
               {/* <div className="Q-file-upload">
                 <label className="flex Q-upload">
@@ -411,45 +291,32 @@ const FormQuestions = () => {
                 </p>
               </div> */}
 
-              {/* To pass id to action */}
-              <input
-                type="hidden"
-                name="currentSurveyId"
-                value={currentSurveyId}
-              />
-
-              {questions.map((question) => (
-                <div className="oneQuestion" key={question.id}>
+              {fields.map((field) => (
+                <div className="oneQuestion" key={field.id}>
                   <div className="question-field flex">
                     <input
                       className="question-input"
                       type="text"
-                      name="questionText"
+                      name="label"
                       required
-                      placeholder="Untitled Question"
-                      value={question.questionText}
-                      onChange={(e) =>
-                        handleQuestionChange(
-                          question.id,
-                          "questionText",
-                          e.target.value
-                        )
-                      }
+                      placeholder="Field label"
+                      value={field.label}
+                      onChange={(e) => handleFieldChange(field.id, "label", e.target.value)}
                     />
                     <img
                       src={copy}
                       className="copy-icon"
                       alt="Duplicate"
-                      onClick={() => duplicateQuestion(question.id)}
+                      onClick={() => duplicateField(field.id)}
                     />
-                    {isDeletingId === question.id ? (
+                    {isDeletingId === field.id ? (
                       <span className="deleting-spinner">Deleting...</span>
                     ) : (
                       <img
                         src={del}
                         className="delete-icon"
                         alt="Delete"
-                        onClick={() => deleteQuestion(question.id)}
+                        onClick={() => deleteField(field.id)}
                       />
                     )}
                   </div>
@@ -458,64 +325,32 @@ const FormQuestions = () => {
                     <div className="wrap-icon type-row flex">
                       <img src={dot} className="dot-icon" alt="Dot" />
                       <select
-                        name="questionType"
-                        value={question.questionType}
-                        onChange={(e) =>
-                          handleQuestionChange(
-                            question.id,
-                            "questionType",
-                            e.target.value
-                          )
-                        }
+                        name="type"
+                        value={field.type}
+                        onChange={(e) => handleFieldChange(field.id, "type", e.target.value)}
                         className="choice-select"
                       >
-                        <option value="multiple_choice">Multiple Choice</option>
-                        <option value="multiple_selection">
-                          Multiple Selection
-                        </option>
-                        <option value="fill_in">Fill in</option>
-                        <option value="five_point">Five Point</option>
+                        <option value="text">Text</option>
+                        <option value="textarea">Paragraph</option>
+                        <option value="radio">Multiple Choice</option>
+                        <option value="checkbox">Checkboxes</option>
+                        <option value="date">Date</option>
                       </select>
                     </div>
-                    {(question.questionType === "multiple_choice" ||
-                      question.questionType === "multiple_selection") && (
+                    {(field.type === "radio" || field.type === "checkbox") && (
                       <div className="options-list flex">
                         <div className="option">
-                          {question.options.map((option, index) => (
+                          {field.options.map((option, index) => (
                             <div className="wrap-icon flex" key={index}>
                               <input
                                 key={index}
                                 type="text"
                                 name="options"
                                 placeholder={`Option ${index + 1}`}
-                                value={option.text}
-                                onChange={(e) =>
-                                  handleOptionChange(
-                                    question.id,
-                                    index,
-                                    "text",
-                                    e.target.value
-                                  )
-                                }
+                                value={option}
+                                onChange={(e) => handleOptionChange(field.id, index, e.target.value)}
                                 className="option-input"
                               />
-                              <label className="custom-input-checkbox">
-                                <input
-                                  type="checkbox"
-                                  checked={option.allowsCustomInput}
-                                  onChange={(e) =>
-                                    handleOptionChange(
-                                      question.id,
-                                      index,
-                                      "allowsCustomInput",
-                                      e.target.checked
-                                    )
-                                  }
-                                />
-                                <span className="checkbox-label">
-                                  Allow custom input
-                                </span>
-                              </label>
                             </div>
                           ))}
                         </div>
@@ -523,23 +358,33 @@ const FormQuestions = () => {
                         <button
                           className="option-select flex"
                           type="button"
-                          onClick={() => addOption(question.id)}
+                          onClick={() => addOption(field.id)}
                         >
                           Add option
                         </button>
                       </div>
                     )}
                   </div>
+                  <div className="wrap-icon flex" style={{gap: "8px", alignItems: "center"}}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={field.required}
+                        onChange={(e) => handleFieldChange(field.id, "required", e.target.checked)}
+                      />
+                      Required
+                    </label>
+                  </div>
                 </div>
               ))}
 
-              <button className="next-question flex" onClick={addNewQuestion}>
-                Next Question <img src={add} alt="Add" />
+              <button className="next-question flex" type="button" onClick={addNewField}>
+                Add Field <img src={add} alt="Add" />
               </button>
 
               <div className="button-group flex">
-                <button type="submit" className="post-btn" disabled={isPosting}>
-                  {isPosting ? "Creating..." : "Create"}
+                <button type="submit" className="post-btn" disabled={isSaving}>
+                  {isSaving ? "Saving..." : "Save"}
                 </button>
               </div>
             </Form>

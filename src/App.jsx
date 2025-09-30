@@ -35,7 +35,10 @@ import Publish from "./pages/publish/publish";
 import Payment from "./components/payment/payment";
 import Pricing from "./pages/pricing/pricing";
 import CreateForm from "./pages/createform/createform.jsx";
+import createFormAction from "./pages/createform/action";
 import FormQuestions from "./pages/formquestions/formquestion.jsx"
+import AnswerForm from "./pages/answerform/answerform.jsx";
+import FormInsights from "./pages/forminsights/forminsights.jsx";
 // import Payment from "./pages/payment/payment";
 import Notifications from "./pages/notifications/notifications";
 import Withdraw from "./pages/withdraw/withdraw";
@@ -64,8 +67,10 @@ const router = createBrowserRouter(
             element={<SurveyQuestion />}
             action={postAction}
           />
-          <Route path="create-form" element={<CreateForm />} />
+          <Route path="create-form" element={<CreateForm />} action={createFormAction} />
           <Route path="formquestions" element={<FormQuestions />} />
+          <Route path="answer-form/:id" element={<AnswerForm />} />
+          <Route path="form-insights/:id" element={<FormInsights />} />
           <Route path="publish" element={<Publish />} />
           <Route path="payment" element={<Payment />} />
           <Route path="pricing" element={<Pricing />} />

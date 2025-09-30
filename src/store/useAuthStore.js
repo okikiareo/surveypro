@@ -10,6 +10,7 @@ const useAuthStore = create(
       userName: '',
       userInst: '',
       currentSurveyId: '',
+      currentFormId: '',
       signupEmail: '',
       isLogoutVisible: false,
       surveys: [],
@@ -28,6 +29,9 @@ const useAuthStore = create(
       setSurveyId: (surveyId) => {
         set({ currentSurveyId: surveyId });
       },
+      setFormId: (formId) => {
+        set({ currentFormId: formId });
+      },
       setSurveys: (fetchedSurveys) => {
         set({ surveys: fetchedSurveys });
       },
@@ -43,7 +47,7 @@ const useAuthStore = create(
      },
       // Action to clear user data on logout
       logout: () => {
-        set({ authToken: '', isAuthenticated: false, userEmail: '', userName: '', currentSurveyId: '' });
+        set({ authToken: '', isAuthenticated: false, userEmail: '', userName: '', currentSurveyId: '', currentFormId: '' });
       }
     }),
     {
@@ -55,7 +59,8 @@ const useAuthStore = create(
         isAuthenticated: state.isAuthenticated,
         userEmail: state.userEmail,
         userName: state.userName,
-        userInst: state.userInst
+        userInst: state.userInst,
+        currentFormId: state.currentFormId
       })
     }
   )
