@@ -22,6 +22,7 @@ const expandsurvey = () => {
   const [loading, setLoading] = useState(true);
   const [isOwnSurvey, setIsOwnSurvey] = useState(false);
   const [userDetails, setUserDetails] = useState(null);
+  const [isUnpublishing, setIsUnpublishing] = useState(false);
 
   useEffect(() => {
     const fetchSurveyInfo = async () => {
@@ -95,6 +96,54 @@ const expandsurvey = () => {
     }
   };
 
+  const handleEditClick = () => {
+    // Set the current survey ID in the store before navigating
+    setSurveyId(id);
+    // Navigate to edit survey
+    navigate(`/surveyquestion`, { 
+      state: { surveyId: id }
+    });
+  };
+
+  const handleInsightsClick = () => {
+    // Pass the survey data to insights page
+    navigate(`/insights/${id}`, {
+      state: { surveyData: survey }
+    });
+  };
+
+  const handleUnpublishClick = async () => {
+    if (!window.confirm("Are you sure you want to unpublish this survey? This will stop accepting new responses.")) {
+      return;
+    }
+
+    setIsUnpublishing(true);
+    try {
+      const response = await fetch(`${config.API_URL}/surveys/${id}/unpublish`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.msg || "Failed to unpublish survey");
+      }
+
+      // Update the survey state to reflect unpublished status
+      setSurvey(prev => ({ ...prev, published: false }));
+      toast.success("Survey unpublished successfully!");
+    } catch (error) {
+      console.error("Error unpublishing survey:", error);
+      toast.error(error.message || "Error unpublishing survey");
+    } finally {
+      setIsUnpublishing(false);
+    }
+  };
+
   return (
     <section className="expand">
       <div className="expand_inner wrap">
@@ -146,12 +195,40 @@ const expandsurvey = () => {
         </div>
         <div className="flex btn_div">
           {isOwnSurvey ? (
-            <button 
-              className="start-btn btn"
-              onClick={handleActionClick}
-            >
-              {survey.published ? "View Insights" : "Edit Survey"}
-            </button>
+            <>
+              {survey.published ? (
+                <div className="published-buttons-container">
+                  <div className="published-buttons flex">
+                    <button 
+                      className="edit-btn btn"
+                      onClick={handleEditClick}
+                    >
+                      Edit Survey
+                    </button>
+                    <button 
+                      className="insights-btn btn"
+                      onClick={handleInsightsClick}
+                    >
+                      View Insights
+                    </button>
+                  </div>
+                  <button 
+                    className="unpublish-btn btn"
+                    onClick={handleUnpublishClick}
+                    disabled={isUnpublishing}
+                  >
+                    {isUnpublishing ? "Unpublishing..." : "Unpublish Survey"}
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  className="start-btn btn"
+                  onClick={handleActionClick}
+                >
+                  Edit Survey
+                </button>
+              )}
+            </>
           ) : (
             <button 
               className="start-btn btn" 

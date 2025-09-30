@@ -62,9 +62,21 @@ export default function ConfirmDetails() {
         toast.error("Insufficient points balance");
         return;
       }
-      const formattedPhone = phoneNumber.startsWith("+234")
-        ? phoneNumber.slice(1)// Remove +234 prefix if present
-        : phoneNumber.replace(/^0/, "234"); // Convert 0... to 234...
+      
+      // Format phone number according to the new requirements
+      let formattedPhone;
+      if (phoneNumber.startsWith("+234")) {
+        // If starts with +234, replace with 0
+        formattedPhone = "0" + phoneNumber.slice(4);
+      } else if (phoneNumber.startsWith("0")) {
+        // If starts with 0, keep as is
+        formattedPhone = phoneNumber;
+      } else {
+        // Any other format is invalid
+        toast.error("Phone number must start with +234 or 0");
+        setIsProcessing(false);
+        return;
+      }
 
       const payload = redeemModalState === "data"
         ? {
@@ -86,7 +98,7 @@ export default function ConfirmDetails() {
       }
       if (redeemModalState === "airtime") {
         if (selectedPlanPrice < 100) {
-          toast.error("Minimum airtime amount is ₦100");
+          toast.error("Minimum airtime amount is 100");
           return;
         }
       }
@@ -120,7 +132,7 @@ export default function ConfirmDetails() {
       }
     } catch (err) {
       console.error("Redemption error:", err.response?.data);
-      toast.error(err.response?.data?.error || "Fail to redeem");
+      toast.error("Error: An error occurred. Try a different plan or try again later" || err.response?.data?.message);
     } finally {
       setIsProcessing(false);
     }
