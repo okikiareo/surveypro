@@ -4,3 +4,5 @@
 
 [build.environment]
   SECRETS_SCAN_OMIT_KEYS = "VITE_API_URL,VITE_PAYSTACK_PUBLIC_KEY"
+
+
